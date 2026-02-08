@@ -1,6 +1,24 @@
 using UnityEngine;
 using System.Collections.Generic;
 
+[System.Serializable]
+public class GridState
+{
+    public bool[,] occupied;
+    public Color[,] colors;
+    public int width;
+    public int height;
+    public int score;
+
+    public GridState(int w, int h)
+    {
+        width = w;
+        height = h;
+        occupied = new bool[w, h];
+        colors = new Color[w, h];
+    }
+}
+
 public class GridManager : MonoBehaviour
 {
     public static GridManager Instance { get; private set; }
@@ -17,6 +35,7 @@ public class GridManager : MonoBehaviour
     [SerializeField] private Color gridBorderColor = new Color(0.25f, 0.2f, 0.35f, 1f);
 
     private bool[,] gridOccupied;
+    private Color[,] gridColors;
     private GameObject[,] placedBlocks;
     private GameObject[,] gridCells;
     private SpriteRenderer[,] cellRenderers;
@@ -56,6 +75,7 @@ public class GridManager : MonoBehaviour
         if (squareSprite == null) CreateSquareSprite();
 
         gridOccupied = new bool[gridWidth, gridHeight];
+        gridColors = new Color[gridWidth, gridHeight];
         placedBlocks = new GameObject[gridWidth, gridHeight];
         gridCells = new GameObject[gridWidth, gridHeight];
         cellRenderers = new SpriteRenderer[gridWidth, gridHeight];
@@ -69,7 +89,6 @@ public class GridManager : MonoBehaviour
         float offsetX = (gridWidth - 1) * totalSize / 2f;
         float offsetY = (gridHeight - 1) * totalSize / 2f;
 
-        // Create border
         GameObject border = new GameObject("GridBorder");
         border.transform.parent = gridParent;
         border.transform.localPosition = Vector3.zero;
@@ -80,7 +99,6 @@ public class GridManager : MonoBehaviour
         border.transform.localScale = new Vector3(borderSize, borderSize, 1);
         borderSR.sortingOrder = -1;
 
-        // Create cells
         for (int x = 0; x < gridWidth; x++)
         {
             for (int y = 0; y < gridHeight; y++)
@@ -104,8 +122,76 @@ public class GridManager : MonoBehaviour
                 gridCells[x, y] = cell;
                 cellRenderers[x, y] = sr;
                 gridOccupied[x, y] = false;
+                gridColors[x, y] = Color.clear;
             }
         }
+    }
+
+    // ==================== SAVE STATE FOR UNDO ====================
+    public GridState SaveState(int currentScore)
+    {
+        GridState state = new GridState(gridWidth, gridHeight);
+        state.score = currentScore;
+
+        for (int x = 0; x < gridWidth; x++)
+        {
+            for (int y = 0; y < gridHeight; y++)
+            {
+                state.occupied[x, y] = gridOccupied[x, y];
+                state.colors[x, y] = gridColors[x, y];
+            }
+        }
+        return state;
+    }
+
+    // ==================== RESTORE STATE FOR UNDO ====================
+    public void RestoreState(GridState state)
+    {
+        if (state == null) return;
+
+        // Clear all current blocks
+        for (int x = 0; x < gridWidth; x++)
+        {
+            for (int y = 0; y < gridHeight; y++)
+            {
+                if (placedBlocks[x, y] != null)
+                {
+                    Destroy(placedBlocks[x, y]);
+                    placedBlocks[x, y] = null;
+                }
+                gridOccupied[x, y] = false;
+                gridColors[x, y] = Color.clear;
+            }
+        }
+
+        // Restore from saved state
+        for (int x = 0; x < gridWidth; x++)
+        {
+            for (int y = 0; y < gridHeight; y++)
+            {
+                if (state.occupied[x, y])
+                {
+                    gridOccupied[x, y] = true;
+                    gridColors[x, y] = state.colors[x, y];
+
+                    // Recreate visual block
+                    Vector3 worldPos = GridToWorld(x, y);
+                    GameObject block = new GameObject("Block_" + x + "_" + y);
+                    block.transform.position = worldPos;
+                    block.transform.parent = gridParent;
+                    block.transform.localScale = Vector3.one * cellSize * 0.95f;
+
+                    SpriteRenderer sr = block.AddComponent<SpriteRenderer>();
+                    sr.sprite = squareSprite;
+                    sr.color = state.colors[x, y];
+                    sr.sortingOrder = 1;
+
+                    placedBlocks[x, y] = block;
+                }
+            }
+        }
+
+        Debug.Log("Grid state restored!");
     }
 
     public Vector2Int WorldToGrid(Vector3 worldPos)
@@ -170,6 +256,7 @@ public class GridManager : MonoBehaviour
             int placeY = gridPos.y + offset.y;
 
             gridOccupied[placeX, placeY] = true;
+            gridColors[placeX, placeY] = color;
 
             Vector3 worldPos = GridToWorld(placeX, placeY);
             
@@ -237,6 +324,7 @@ public class GridManager : MonoBehaviour
             placedBlocks[x, y] = null;
         }
         gridOccupied[x, y] = false;
+        gridColors[x, y] = Color.clear;
     }
 
     public void ShowPlacementPreview(BlockPieceData piece, Vector2Int gridPos)

@@ -154,6 +154,15 @@ public class DraggablePiece : MonoBehaviour
             return;
         }
 
+        // ========== SAVE STATE FOR UNDO BEFORE PLACING ==========
+        if (UndoManager.Instance != null && GameManager.Instance != null)
+        {
+            int currentScore = GameManager.Instance.GetCurrentScore();
+            GridState stateBeforePlace = gridManager.SaveState(currentScore);
+            UndoManager.Instance.SaveStateForUndo(stateBeforePlace);
+        }
+        // =========================================================
+
         PlacementResult result = gridManager.PlacePiece(PieceData, gridPos, PieceColor);
 
         if (result.Success)
@@ -163,13 +172,13 @@ public class DraggablePiece : MonoBehaviour
             int comboBonus = result.IsCombo ? result.LinesCleared * 5 : 0;
             int totalScore = baseScore + lineBonus + comboBonus;
 
-            // CRITICAL: Tell spawner FIRST so AllPiecesPlaced() works correctly
+            // Tell spawner FIRST so AllPiecesPlaced() works correctly
             if (spawner != null)
             {
                 spawner.OnPiecePlaced(SlotIndex);
             }
 
-            // THEN notify game manager (which checks AllPiecesPlaced and spawns new set)
+            // Then notify game manager
             if (GameManager.Instance != null)
             {
                 GameManager.Instance.OnBlockPlaced(totalScore, result.LinesCleared, result.IsCombo);
